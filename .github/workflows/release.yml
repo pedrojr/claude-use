@@ -1,0 +1,81 @@
+name: Release
+
+# Publica uma release com o instalador ao enviar uma tag "v*" (ex.: git tag v1.0.0 && git push origin v1.0.0).
+# Rodar manualmente (workflow_dispatch) só compila e guarda os arquivos como artifact do workflow.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Definir versão
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          else
+            echo "VERSION=0.0.0-dev.${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+          fi
+
+      # Fyne usa CGO; a imagem do runner costuma trazer MinGW, senão instala.
+      - name: Verificar GCC
+        shell: bash
+        run: |
+          if ! command -v gcc >/dev/null; then
+            choco install mingw -y --no-progress
+            echo "C:\\ProgramData\\mingw64\\mingw64\\bin" >> "$GITHUB_PATH"
+          fi
+
+      - name: Compilar
+        shell: bash
+        env:
+          CGO_ENABLED: "1"
+        run: |
+          gcc --version | head -1
+          go vet ./...
+          go build -trimpath -ldflags "-H=windowsgui -s -w" -o dist/claude-use.exe .
+
+      # Versão fixa, extraída em modo portátil (não depende do que vem na imagem do runner).
+      - name: Instalar Inno Setup
+        shell: pwsh
+        env:
+          INNO_URL: https://github.com/jrsoftware/issrc/releases/download/is-7_1_0/innosetup-7.1.0-x64.exe
+        run: |
+          $setup = Join-Path $env:RUNNER_TEMP "innosetup.exe"
+          $dir = Join-Path $env:RUNNER_TEMP "inno"
+          Invoke-WebRequest -UseBasicParsing $env:INNO_URL -OutFile $setup
+          Start-Process -Wait -FilePath $setup -ArgumentList "/PORTABLE=1", "/VERYSILENT", "/SUPPRESSMSGBOXES", "/CURRENTUSER", "/NOICONS", "/DIR=$dir"
+          if (-not (Test-Path (Join-Path $dir "ISCC.exe"))) { throw "ISCC.exe não encontrado" }
+          $dir | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+
+      - name: Gerar instalador
+        shell: pwsh
+        run: ISCC.exe "/DAppVersion=$env:VERSION" installer\claude-use.iss
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: claude-use-${{ env.VERSION }}
+          path: |
+            dist/claude-use.exe
+            dist/claude-use-setup-*.exe
+
+      - name: Publicar release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            dist/claude-use-setup-${{ env.VERSION }}.exe
+            dist/claude-use.exe

@@ -22,7 +22,23 @@ Overlay compacto e semi-transparente para Windows que mostra os limites de uso d
   `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`). Se mover o executável, desative e ative de novo.
 - **Quit**
 
-## Requisitos
+## Instalação
+
+Baixe o instalador `claude-use-setup-<versão>.exe` na página de
+[Releases](https://github.com/pedrojr/claude-use/releases/latest) e execute. Ele:
+
+- instala só para o usuário atual, em `%LOCALAPPDATA%\Programs\claude-use` (não pede administrador);
+- cria atalho no Menu Iniciar (e, se marcado, na Área de Trabalho);
+- oferece a opção **Iniciar com o Windows** (a mesma do menu da bandeja);
+- pede para fechar o overlay se ele estiver aberto (útil ao atualizar);
+- ao desinstalar, remove também o início automático.
+
+Na mesma release há o `claude-use.exe` avulso, que roda sem instalar.
+
+> O executável não é assinado digitalmente; o Windows SmartScreen pode mostrar um aviso.
+> Clique em **Mais informações → Executar assim mesmo**.
+
+## Requisitos (para compilar)
 
 - Go 1.22+
 - GCC para CGO (ex.: [MinGW-w64 / WinLibs](https://winlibs.com)) – exigido pelo Fyne
@@ -39,6 +55,29 @@ go build -ldflags "-H=windowsgui -s -w" -o claude-use.exe .
 ```bash
 go build -o claude-use-cli.exe . && ./claude-use-cli.exe -print
 ```
+
+### Instalador
+
+O instalador é feito com [Inno Setup](https://jrsoftware.org/isinfo.php) (script em
+[installer/claude-use.iss](installer/claude-use.iss)). Localmente:
+
+```bash
+go build -trimpath -ldflags "-H=windowsgui -s -w" -o dist/claude-use.exe .
+iscc /DAppVersion=1.0.0 installer/claude-use.iss   # gera dist/claude-use-setup-1.0.0.exe
+```
+
+## Publicar uma versão
+
+O workflow [.github/workflows/release.yml](.github/workflows/release.yml) compila o app e o instalador
+no GitHub Actions. Ao enviar uma tag `v*`, ele cria a release com os dois arquivos:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+Também dá para rodar o workflow manualmente (aba **Actions → Release → Run workflow**). Nesse caso
+ele só compila e deixa os arquivos como artifact da execução, sem criar release.
 
 ## Como os dados são obtidos
 

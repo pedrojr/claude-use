@@ -33,3 +33,6 @@ go.work.sum
 
 # Imagens e markup gerados por testes visuais reprovados
 testdata/failed/
+
+# Saída do build/instalador
+dist/
