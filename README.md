@@ -4,7 +4,8 @@ Overlay compacto e semi-transparente para Windows que mostra os limites de uso d
 (o mesmo que a tela **Configurações → Uso** / `/usage` do Claude Code). Feito em Go com [Fyne](https://fyne.io).
 
 - Fica encostado no lado direito do monitor principal, centralizado na vertical, sempre por cima.
-- Sem borda, cantos arredondados, ~85% opaco, sem botão na barra de tarefas e não rouba o foco.
+- Sem borda, cantos arredondados, ~85% opaco, textos em branco, sem botão na barra de tarefas (só o ícone da bandeja) e não rouba o foco.
+- Apenas uma instância: abrir o executável de novo com o overlay já aberto não faz nada.
 - Atualiza a cada 5 minutos; o botão ⟳ discreto no rodapé força a atualização.
 - A contagem "Reinicia em…" é recalculada localmente a cada 30 s.
 - Barras mudam de cor: azul, laranja (≥ 75%) e vermelho (≥ 90%).
@@ -14,9 +15,11 @@ Overlay compacto e semi-transparente para Windows que mostra os limites de uso d
 Ícone na bandeja com:
 
 - **Atualizar agora**
-- **Ignorar cliques (atravessar)** – os cliques passam através do overlay (fica ~60% opaco).
+- **Ignorar cliques (atravessar)** – os cliques passam através do overlay (a transparência não muda).
   Use a bandeja para desativar e voltar a clicar no botão de refresh.
 - **Ocultar / Mostrar**
+- **Iniciar com o Windows** – liga/desliga o início automático (grava o caminho do `.exe` atual em
+  `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`). Se mover o executável, desative e ative de novo.
 - **Quit**
 
 ## Requisitos

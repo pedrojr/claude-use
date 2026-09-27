@@ -18,19 +18,18 @@ import (
 )
 
 const (
-	windowWidth     = 250
+	windowWidth     = 290
 	refreshInterval = 5 * time.Minute
 	tickInterval    = 30 * time.Second // updates the "Reinicia em" countdown locally
-	alphaNormal     = 215              // ~85% opaque
-	alphaPassThru   = 150              // ~60% opaque while clicks pass through
+	overlayAlpha    = 215              // ~85% opaque, same with or without click-through
 )
 
 type overlay struct {
 	w       fyne.Window
 	content fyne.CanvasObject
 
-	plan                           *canvas.Text
-	status                         *canvas.Text
+	plan                          *canvas.Text
+	status                        *canvas.Text
 	session, weekly, opus, sonnet *limitRow
 
 	hwnd         uintptr
@@ -50,8 +49,8 @@ func gap(h float32) fyne.CanvasObject {
 func newOverlay(w fyne.Window) *overlay {
 	o := &overlay{
 		w:       w,
-		plan:    text("", 11, colSubtle, false),
-		status:  text("Carregando…", 10, colSubtle, false),
+		plan:    text("", 13, colText, false),
+		status:  text("Carregando…", 12, colText, false),
 		session: newLimitRow("Sessão atual"),
 		weekly:  newLimitRow("Semanal · todos os modelos"),
 		opus:    newLimitRow("Semanal · Opus"),
@@ -61,10 +60,10 @@ func newOverlay(w fyne.Window) *overlay {
 	o.sonnet.box.Hide()
 
 	refresh := newTapIcon(theme.ViewRefreshIcon(), o.refresh)
-	header := container.NewHBox(text("Seus limites de uso", 13, colText, true), o.plan)
+	header := container.NewHBox(text("Seus limites de uso", 15, colText, true), o.plan)
 	footer := container.NewBorder(nil, nil, o.status, refresh)
 
-	o.content = container.New(layout.NewCustomPaddedLayout(10, 10, 14, 14),
+	o.content = container.New(layout.NewCustomPaddedLayout(12, 12, 16, 16),
 		container.NewVBox(
 			header, gap(4),
 			o.session.box, gap(4),
@@ -82,7 +81,7 @@ func (o *overlay) refresh() {
 		return
 	}
 	o.refreshing = true
-	o.setStatus("Atualizando…", colSubtle)
+	o.setStatus("Atualizando…")
 	go func() {
 		u, plan, err := fetchUsage()
 		fyne.Do(func() { o.show(u, plan, err) })
@@ -100,7 +99,7 @@ func (o *overlay) show(u *Usage, plan string, err error) {
 		if !o.lastUpdate.IsZero() {
 			msg += " · " + o.lastUpdate.Format("15:04")
 		}
-		o.setStatus(msg, colError)
+		o.setStatus(msg)
 		o.fit()
 		return
 	}
@@ -109,13 +108,12 @@ func (o *overlay) show(u *Usage, plan string, err error) {
 	o.weekly.set(u.SevenDay)
 	o.opus.set(u.SevenDayOpus)
 	o.sonnet.set(u.SevenDaySonnet)
-	o.setStatus("Atualizado às "+o.lastUpdate.Format("15:04"), colSubtle)
+	o.setStatus("Atualizado às " + o.lastUpdate.Format("15:04"))
 	o.fit()
 }
 
-func (o *overlay) setStatus(s string, c color.Color) {
+func (o *overlay) setStatus(s string) {
 	o.status.Text = s
-	o.status.Color = c
 	o.status.Refresh()
 }
 
@@ -143,11 +141,7 @@ func (o *overlay) applyNative() {
 			})
 		}
 	}
-	alpha := byte(alphaNormal)
-	if o.clickThrough {
-		alpha = alphaPassThru
-	}
-	applyOverlay(o.hwnd, alpha, o.clickThrough)
+	applyOverlay(o.hwnd, overlayAlpha, o.clickThrough)
 }
 
 func (o *overlay) loop() {
@@ -188,6 +182,9 @@ func main() {
 		printUsage()
 		return
 	}
+	if !acquireSingleInstance() {
+		return // another overlay is already running
+	}
 
 	a := app.NewWithID("com.github.claude-use")
 	a.Settings().SetTheme(overlayTheme{theme.DefaultTheme()})
@@ -208,11 +205,21 @@ func main() {
 		visible := true
 		passThru := fyne.NewMenuItem("Ignorar cliques (atravessar)", nil)
 		toggle := fyne.NewMenuItem("Ocultar", nil)
-		menu := fyne.NewMenu("Uso do Claude",
-			fyne.NewMenuItem("Atualizar agora", o.refresh),
-			passThru,
-			toggle,
-		)
+		autostart := fyne.NewMenuItem("Iniciar com o Windows", nil)
+		autostart.Checked = autostartEnabled()
+		items := []*fyne.MenuItem{fyne.NewMenuItem("Atualizar agora", o.refresh), passThru, toggle}
+		if autostartSupported {
+			items = append(items, autostart)
+		}
+		menu := fyne.NewMenu("Uso do Claude", items...)
+		autostart.Action = func() {
+			if err := setAutostart(!autostart.Checked); err != nil {
+				o.setStatus("Erro ao configurar início automático")
+				return
+			}
+			autostart.Checked = autostartEnabled()
+			menu.Refresh()
+		}
 		passThru.Action = func() {
 			o.clickThrough = !o.clickThrough
 			passThru.Checked = o.clickThrough

@@ -3,13 +3,19 @@
 package main
 
 import (
+	"os"
 	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/windows/registry"
 )
 
 var (
-	user32 = syscall.NewLazyDLL("user32.dll")
-	gdi32  = syscall.NewLazyDLL("gdi32.dll")
+	kernel32 = syscall.NewLazyDLL("kernel32.dll")
+	user32   = syscall.NewLazyDLL("user32.dll")
+	gdi32    = syscall.NewLazyDLL("gdi32.dll")
+
+	procCreateMutexW = kernel32.NewProc("CreateMutexW")
 
 	procGetWindowLongPtrW          = user32.NewProc("GetWindowLongPtrW")
 	procSetWindowLongPtrW          = user32.NewProc("SetWindowLongPtrW")
@@ -20,6 +26,8 @@ var (
 	procGetMonitorInfoW            = user32.NewProc("GetMonitorInfoW")
 	procSetWindowRgn               = user32.NewProc("SetWindowRgn")
 	procGetDpiForWindow            = user32.NewProc("GetDpiForWindow")
+	procShowWindow                 = user32.NewProc("ShowWindow")
+	procIsWindowVisible            = user32.NewProc("IsWindowVisible")
 	procCreateRoundRectRgn         = gdi32.NewProc("CreateRoundRectRgn")
 )
 
@@ -32,6 +40,9 @@ const (
 	wsExNoActivate  = 0x08000000
 
 	lwaAlpha = 0x2
+
+	swHide           = 0
+	swShowNoActivate = 4
 
 	swpNoSize       = 0x0001
 	swpNoActivate   = 0x0010
@@ -65,6 +76,7 @@ func applyOverlay(hwnd uintptr, alpha byte, clickThrough bool) {
 	}
 
 	ex, _, _ := procGetWindowLongPtrW.Call(hwnd, uintptr(gwlExStyle))
+	wasToolWindow := ex&wsExToolWindow != 0
 	ex |= wsExLayered | wsExToolWindow | wsExNoActivate | wsExTopmost
 	ex &^= wsExAppWindow
 	if clickThrough {
@@ -73,6 +85,14 @@ func applyOverlay(hwnd uintptr, alpha byte, clickThrough bool) {
 		ex &^= wsExTransparent
 	}
 	procSetWindowLongPtrW.Call(hwnd, uintptr(gwlExStyle), ex)
+	if !wasToolWindow {
+		// The taskbar only re-reads the extended style when a window is shown, so
+		// hide and re-show it once to drop the button created before the style change.
+		if v, _, _ := procIsWindowVisible.Call(hwnd); v != 0 {
+			procShowWindow.Call(hwnd, swHide)
+			procShowWindow.Call(hwnd, swShowNoActivate)
+		}
+	}
 	procSetLayeredWindowAttributes.Call(hwnd, 0, uintptr(alpha), lwaAlpha)
 
 	var r winRect
@@ -101,4 +121,60 @@ func applyOverlay(hwnd uintptr, alpha byte, clickThrough bool) {
 
 	procSetWindowPos.Call(hwnd, uintptr(hwndTopmost), uintptr(x), uintptr(y), 0, 0,
 		swpNoSize|swpNoActivate|swpFrameChanged)
+}
+
+// singleInstanceMutex stays open for the whole process lifetime; Windows releases it on exit.
+var singleInstanceMutex uintptr
+
+// acquireSingleInstance reports whether this is the only running instance of the overlay.
+func acquireSingleInstance() bool {
+	name, _ := syscall.UTF16PtrFromString(`Local\com.github.claude-use`)
+	h, _, err := procCreateMutexW.Call(0, 0, uintptr(unsafe.Pointer(name)))
+	if h == 0 {
+		return true // could not create the mutex; do not block startup
+	}
+	if err == syscall.ERROR_ALREADY_EXISTS {
+		return false
+	}
+	singleInstanceMutex = h
+	return true
+}
+
+const (
+	runKeyPath   = `Software\Microsoft\Windows\CurrentVersion\Run`
+	runValueName = "claude-use"
+)
+
+// autostartSupported reports whether "start with Windows" can be toggled on this platform.
+const autostartSupported = true
+
+// autostartEnabled reports whether the overlay is registered to start with Windows.
+func autostartEnabled() bool {
+	k, err := registry.OpenKey(registry.CURRENT_USER, runKeyPath, registry.QUERY_VALUE)
+	if err != nil {
+		return false
+	}
+	defer k.Close()
+	_, _, err = k.GetStringValue(runValueName)
+	return err == nil
+}
+
+// setAutostart registers (or removes) the current executable in the user's Run key.
+func setAutostart(on bool) error {
+	k, err := registry.OpenKey(registry.CURRENT_USER, runKeyPath, registry.SET_VALUE)
+	if err != nil {
+		return err
+	}
+	defer k.Close()
+	if !on {
+		if err := k.DeleteValue(runValueName); err != nil && err != registry.ErrNotExist {
+			return err
+		}
+		return nil
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	return k.SetStringValue(runValueName, `"`+exe+`"`)
 }

@@ -13,9 +13,7 @@ import (
 
 var (
 	colBackground = color.NRGBA{0x1c, 0x1c, 0x1c, 0xff}
-	colText       = color.NRGBA{0xec, 0xec, 0xec, 0xff}
-	colSubtle     = color.NRGBA{0x9a, 0x9a, 0x9a, 0xff}
-	colError      = color.NRGBA{0xe8, 0x8a, 0x5a, 0xff}
+	colText       = color.NRGBA{0xff, 0xff, 0xff, 0xff}
 	colBarTrack   = color.NRGBA{0x12, 0x2a, 0x4a, 0xff}
 	colBarBlue    = color.NRGBA{0x2f, 0x80, 0xe8, 0xff}
 	colBarOrange  = color.NRGBA{0xe8, 0x9a, 0x2f, 0xff}
@@ -32,12 +30,15 @@ func barColor(pct float64) color.Color {
 	return colBarBlue
 }
 
-// overlayTheme forces the dark variant with a compact text size.
+// overlayTheme forces the dark variant with a compact text size and white foreground.
 type overlayTheme struct{ fyne.Theme }
 
 func (t overlayTheme) Color(n fyne.ThemeColorName, _ fyne.ThemeVariant) color.Color {
-	if n == theme.ColorNameBackground {
+	switch n {
+	case theme.ColorNameBackground:
 		return colBackground
+	case theme.ColorNameForeground:
+		return colText
 	}
 	return t.Theme.Color(n, theme.VariantDark)
 }
@@ -45,7 +46,7 @@ func (t overlayTheme) Color(n fyne.ThemeColorName, _ fyne.ThemeVariant) color.Co
 func (t overlayTheme) Size(n fyne.ThemeSizeName) float32 {
 	switch n {
 	case theme.SizeNameText:
-		return 12
+		return 14
 	case theme.SizeNamePadding:
 		return 3
 	}
@@ -96,14 +97,16 @@ func (r *usageBarRenderer) Layout(size fyne.Size) {
 	r.b.bar.Resize(fyne.NewSize(w, size.Height))
 }
 
-func (r *usageBarRenderer) MinSize() fyne.Size { return fyne.NewSize(60, 6) }
+func (r *usageBarRenderer) MinSize() fyne.Size { return fyne.NewSize(60, 7) }
 func (r *usageBarRenderer) Refresh() {
 	r.Layout(r.b.Size())
 	r.b.track.Refresh()
 	r.b.bar.Refresh()
 }
-func (r *usageBarRenderer) Objects() []fyne.CanvasObject { return []fyne.CanvasObject{r.b.track, r.b.bar} }
-func (r *usageBarRenderer) Destroy()                     {}
+func (r *usageBarRenderer) Objects() []fyne.CanvasObject {
+	return []fyne.CanvasObject{r.b.track, r.b.bar}
+}
+func (r *usageBarRenderer) Destroy() {}
 
 // tapIcon is a small, discreet clickable icon (used for refresh).
 type tapIcon struct {
@@ -124,7 +127,7 @@ func (t *tapIcon) Tapped(*fyne.PointEvent) {
 	}
 }
 func (t *tapIcon) Cursor() desktop.Cursor { return desktop.PointerCursor }
-func (t *tapIcon) MinSize() fyne.Size      { return fyne.NewSize(14, 14) }
+func (t *tapIcon) MinSize() fyne.Size     { return fyne.NewSize(16, 16) }
 
 func text(s string, size float32, c color.Color, bold bool) *canvas.Text {
 	t := canvas.NewText(s, c)
@@ -143,9 +146,9 @@ type limitRow struct {
 
 func newLimitRow(title string) *limitRow {
 	r := &limitRow{
-		title:  text(title, 12, colText, true),
-		pct:    text("—", 11, colSubtle, false),
-		resets: text("", 10, colSubtle, false),
+		title:  text(title, 14, colText, true),
+		pct:    text("—", 13, colText, false),
+		resets: text("", 12, colText, false),
 		bar:    newUsageBar(),
 	}
 	r.box = container.NewVBox(
