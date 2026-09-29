@@ -44,6 +44,8 @@ jobs:
           CGO_ENABLED: "1"
         run: |
           gcc --version | head -1
+          # Ícone do executável (claude-use.rc -> .syso, que o go build inclui sozinho).
+          windres -O coff -o rsrc_windows_amd64.syso claude-use.rc
           go vet ./...
           go build -trimpath -ldflags "-H=windowsgui -s -w" -o dist/claude-use.exe .
 

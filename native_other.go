@@ -3,7 +3,12 @@
 package main
 
 // applyOverlay is only implemented on Windows.
-func applyOverlay(hwnd uintptr, alpha byte, clickThrough bool) {}
+func applyOverlay(hwnd uintptr, alpha byte, clickThrough bool, pos *windowPos) {}
+
+// Window dragging is only implemented on Windows.
+func cursorPos() (int32, int32)                        { return 0, 0 }
+func windowPosition(hwnd uintptr) (int32, int32, bool) { return 0, 0, false }
+func moveWindow(hwnd uintptr, x, y int32)              {}
 
 // acquireSingleInstance is only enforced on Windows.
 func acquireSingleInstance() bool { return true }

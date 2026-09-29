@@ -136,20 +136,42 @@ func text(s string, size float32, c color.Color, bold bool) *canvas.Text {
 	return t
 }
 
-// limitRow shows: title .... NN% / bar / "Reinicia em ...".
+// dragHandle is an invisible layer behind the content; dragging it moves the window.
+type dragHandle struct {
+	widget.BaseWidget
+	onPress, onDrag, onEnd func()
+}
+
+func newDragHandle(onPress, onDrag, onEnd func()) *dragHandle {
+	d := &dragHandle{onPress: onPress, onDrag: onDrag, onEnd: onEnd}
+	d.ExtendBaseWidget(d)
+	return d
+}
+
+func (d *dragHandle) CreateRenderer() fyne.WidgetRenderer {
+	return widget.NewSimpleRenderer(canvas.NewRectangle(color.Transparent))
+}
+func (d *dragHandle) MouseDown(*desktop.MouseEvent) { d.onPress() }
+func (d *dragHandle) MouseUp(*desktop.MouseEvent)   {}
+func (d *dragHandle) Dragged(*fyne.DragEvent)       { d.onDrag() }
+func (d *dragHandle) DragEnd()                      { d.onEnd() }
+
+// limitRow shows: title .... NN% / bar / "Resets in ...".
 type limitRow struct {
 	box                *fyne.Container
+	titleKey           string
 	title, pct, resets *canvas.Text
 	bar                *usageBar
 	limit              *Limit
 }
 
-func newLimitRow(title string) *limitRow {
+func newLimitRow(titleKey string) *limitRow {
 	r := &limitRow{
-		title:  text(title, 14, colText, true),
-		pct:    text("—", 13, colText, false),
-		resets: text("", 12, colText, false),
-		bar:    newUsageBar(),
+		titleKey: titleKey,
+		title:    text(T(titleKey), 14, colText, true),
+		pct:      text("—", 13, colText, false),
+		resets:   text("", 12, colText, false),
+		bar:      newUsageBar(),
 	}
 	r.box = container.NewVBox(
 		container.NewBorder(nil, nil, r.title, r.pct),
@@ -166,10 +188,19 @@ func (r *limitRow) set(l *Limit) {
 		return
 	}
 	r.box.Show()
-	r.pct.Text = formatPct(l.Utilization) + " usado"
+	r.pct.Text = T("used", formatPct(l.Utilization))
 	r.pct.Refresh()
 	r.bar.set(l.Utilization)
 	r.tick()
+}
+
+// retranslate re-renders the texts after a language change.
+func (r *limitRow) retranslate() {
+	r.title.Text = T(r.titleKey)
+	r.title.Refresh()
+	if r.limit != nil {
+		r.set(r.limit)
+	}
 }
 
 // tick re-renders the countdown without calling the API.

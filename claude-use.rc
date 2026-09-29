@@ -1,0 +1,5 @@
+// Windows resources for claude-use.exe (the same icon as the tray icon).
+// Compile into a .syso before "go build", which links it automatically:
+//   windres -O coff -o rsrc_windows_amd64.syso claude-use.rc
+// assets/claude-use.ico is generated from assets/tray.png by assets/mkicon.go.
+1 ICON "assets/claude-use.ico"

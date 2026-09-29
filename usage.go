@@ -2,8 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
-	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -45,8 +43,6 @@ type credentials struct {
 	} `json:"claudeAiOauth"`
 }
 
-var errTokenExpired = errors.New("token expirado: abra o Claude Code")
-
 func credentialsPath() string {
 	if dir := os.Getenv("CLAUDE_CONFIG_DIR"); dir != "" {
 		return filepath.Join(dir, ".credentials.json")
@@ -60,14 +56,14 @@ func credentialsPath() string {
 func loadCredentials() (*credentials, error) {
 	data, err := os.ReadFile(credentialsPath())
 	if err != nil {
-		return nil, fmt.Errorf("credenciais não encontradas")
+		return nil, usageError{key: "errNoCreds"}
 	}
 	var c credentials
 	if err := json.Unmarshal(data, &c); err != nil {
-		return nil, fmt.Errorf("credenciais inválidas")
+		return nil, usageError{key: "errBadCreds"}
 	}
 	if c.ClaudeAiOauth.AccessToken == "" {
-		return nil, fmt.Errorf("faça login no Claude Code")
+		return nil, usageError{key: "errLogin"}
 	}
 	return &c, nil
 }
@@ -93,22 +89,22 @@ func fetchUsage() (*Usage, string, error) {
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return nil, plan, fmt.Errorf("sem conexão")
+		return nil, plan, usageError{key: "errOffline"}
 	}
 	defer resp.Body.Close()
 
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized:
-		return nil, plan, errTokenExpired
+		return nil, plan, usageError{key: "errExpired"}
 	case resp.StatusCode == http.StatusTooManyRequests:
-		return nil, plan, fmt.Errorf("limite de requisições (429)")
+		return nil, plan, usageError{key: "errRateLimit"}
 	case resp.StatusCode != http.StatusOK:
-		return nil, plan, fmt.Errorf("erro HTTP %d", resp.StatusCode)
+		return nil, plan, usageError{key: "errHTTP", args: []any{resp.StatusCode}}
 	}
 
 	var u Usage
 	if err := json.NewDecoder(resp.Body).Decode(&u); err != nil {
-		return nil, plan, fmt.Errorf("resposta inválida")
+		return nil, plan, usageError{key: "errBadReply"}
 	}
 	return &u, plan, nil
 }
@@ -116,7 +112,7 @@ func fetchUsage() (*Usage, string, error) {
 func planLabel(p string) string {
 	switch p {
 	case "team":
-		return "Equipe"
+		return T("planTeam")
 	case "pro":
 		return "Pro"
 	case "max":
@@ -129,25 +125,28 @@ func planLabel(p string) string {
 	return p
 }
 
-// resetText mimics "Reinicia em 4 h 8 min".
+// resetText mimics "Resets in 4 h 8 min".
 func resetText(t time.Time) string {
 	if t.IsZero() {
 		return ""
 	}
 	d := time.Until(t)
 	if d <= 0 {
-		return "Reiniciando…"
+		return T("resetting")
 	}
 	mins := int(d.Round(time.Minute).Minutes())
+	if mins < 1 { // less than 30 s left: show "1 min", not "0 min"
+		mins = 1
+	}
 	days, hours, m := mins/(24*60), (mins/60)%24, mins%60
 	switch {
 	case days > 0 && hours == 0:
-		return fmt.Sprintf("Reinicia em %d d", days)
+		return T("resetsD", days)
 	case days > 0:
-		return fmt.Sprintf("Reinicia em %d d %d h", days, hours)
+		return T("resetsDH", days, hours)
 	case hours > 0:
-		return fmt.Sprintf("Reinicia em %d h %d min", hours, m)
+		return T("resetsHM", hours, m)
 	default:
-		return fmt.Sprintf("Reinicia em %d min", m)
+		return T("resetsM", m)
 	}
 }

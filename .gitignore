@@ -36,3 +36,6 @@ testdata/failed/
 
 # Saída do build/instalador
 dist/
+
+# Recurso do Windows gerado (ícone)
+*.syso
